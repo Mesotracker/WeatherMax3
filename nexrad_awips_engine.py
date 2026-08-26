@@ -911,9 +911,9 @@ def demo() -> None:
     base = volume.tilts[0.5]
     threat = ThreatState(
         peak_dbz=float(np.max(base["reflectivity_dbz"])),
-        downburst_wind_kt=float(np.max(np.abs(base["radial_velocity_kt"]))),
-        hail_size_in=2.25,
-        tvs_delta_v_kt=74.0,
+        downburst_wind_kt=float(np.max(np.power(np.abs(base["radial_velocity_kt"]), 0.969457))),
+        hail_size_in=1.5,
+        tvs_delta_v_kt=60.0,
         debris_signature=True,
     )
     warngen = WarnGenCompiler(site, MockGISDatabase.paducah_demo())
