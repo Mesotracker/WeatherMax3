@@ -796,7 +796,7 @@ const PRODUCTS = [
     group: "advisory",
     hazards: ["wind", "hail"],
     duration: 3,
-    color: "#a7aa9b",
+    color: "#359DD4",
     severe: false,
   },
 ];
@@ -808,10 +808,12 @@ const LAYERS = {
     legend: [
       ["0", "#1d8d42"],
       ["20", "#70c95f"],
-      ["40", "#f4d03f"],
-      ["60", "#e95a35"],
-      ["70", "#cf2d72"],
-      ["80 dBZ", "#f4f0ff"],
+      ["30", "#F7DB2F"],
+      ["40", "#F4813F"],
+      ["50", "#FF5736"],
+      ["60", "#EB4BBB"],
+      ["70", "#FFFFFF"],
+      ["80 dBZ", "#96F8FF"],
     ],
   },
   velocity: {
