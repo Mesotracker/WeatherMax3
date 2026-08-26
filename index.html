@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WeatherMax Warning Desk</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">WX</div>
+          <div>
+            <h1>WeatherMax Warning Desk</h1>
+            <p id="caseSubtitle">Severe weather simulation</p>
+          </div>
+        </div>
+
+        <div class="top-metrics" aria-label="desk metrics">
+          <div class="metric">
+            <span>Valid</span>
+            <strong id="validTime">--</strong>
+          </div>
+          <div class="metric">
+            <span>Desk Score</span>
+            <strong id="deskScore">--</strong>
+          </div>
+          <div class="metric">
+            <span>Hits</span>
+            <strong id="hitCount">0</strong>
+          </div>
+          <div class="metric">
+            <span>False Alarms</span>
+            <strong id="falseAlarmCount">0</strong>
+          </div>
+          <div class="metric">
+            <span>Misses</span>
+            <strong id="missCount">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="desk-grid">
+        <aside class="panel left-panel">
+          <section class="control-section">
+            <div class="section-heading">
+              <h2>Case</h2>
+              <span class="status-chip">SIM</span>
+            </div>
+            <label class="field-label" for="caseSelect">Region</label>
+            <select id="caseSelect"></select>
+            <div class="sounding-inputs" aria-label="environmental sounding inputs">
+              <label>Temperature <input id="tempInput" type="number" min="-20" max="115" value="78" /> <span>°F</span></label>
+              <label>Dewpoint <input id="dewpointInput" type="number" min="-40" max="90" value="66" /> <span>°F</span></label>
+              <label>Bulk shear <input id="shearInput" type="number" min="0" max="120" value="45" /> <span>kt</span></label>
+              <label>CAPE <input id="capeInput" type="number" min="0" max="7000" step="100" value="2400" /> <span>J/kg</span></label>
+              <label>Helicity <input id="helicityInput" type="number" min="0" max="800" step="10" value="180" /> <span>m²/s²</span></label>
+            </div>
+            <button id="runBtn" class="desk-button" type="button">Run Simulation</button>
+            <div class="skewt-card">
+              <div class="mini-heading"><span>Input sounding</span><strong id="soundingMeta">Surface based</strong></div>
+              <canvas id="soundingCanvas" aria-label="Skew-T temperature and dewpoint profile"></canvas>
+            </div>
+            <div class="briefing" id="briefing"></div>
+          </section>
+
+          <section class="control-section palette-section">
+            <div class="section-heading">
+              <h2>Custom palette</h2>
+              <span id="palStatus" class="status-chip muted">Default</span>
+            </div>
+            <label class="field-label" for="palTarget">Apply uploaded .pal to</label>
+            <select id="palTarget">
+              <option value="radar">Reflectivity</option>
+              <option value="velocity">Velocity</option>
+            </select>
+            <label class="file-button" for="palFile">Choose .pal file</label>
+            <input id="palFile" type="file" accept=".pal,text/plain" hidden />
+            <button id="clearPalBtn" class="ghost-button compact-button" type="button">Restore selected default</button>
+            <p class="helper-copy">Only the selected reflectivity or velocity layer is overridden.</p>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading">
+              <h2>Product Desk</h2>
+              <span id="areaStatus" class="status-chip muted">No Area</span>
+            </div>
+            <label class="field-label" for="productSelect">Product</label>
+            <select id="productSelect"></select>
+            <div id="productOptions" class="product-options"></div>
+            <div class="button-row">
+              <button id="clearAreaBtn" class="ghost-button" type="button">Clear Area</button>
+              <button id="issueBtn" class="primary-button" type="button">Issue Product</button>
+            </div>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading">
+              <h2>Verification</h2>
+              <span id="accuracyBadge" class="status-chip">72%</span>
+            </div>
+            <div class="score-bars">
+              <div>
+                <span>Polygon Skill</span>
+                <meter id="polygonMeter" min="0" max="100" value="0"></meter>
+              </div>
+              <div>
+                <span>Lead Time</span>
+                <meter id="leadMeter" min="0" max="100" value="0"></meter>
+              </div>
+              <div>
+                <span>Hazard Match</span>
+                <meter id="hazardMeter" min="0" max="100" value="0"></meter>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="map-panel">
+          <div class="map-toolbar">
+            <div class="layer-tabs" id="layerTabs" aria-label="weather layers">
+              <button class="active" type="button" data-layer="radar">Reflectivity</button>
+              <button type="button" data-layer="velocity">Velocity</button>
+              <button type="button" data-layer="spectrum">SW</button>
+              <button type="button" data-layer="hail">Hail Size</button>
+              <button type="button" data-layer="rotation">Rotation</button>
+              <button type="button" data-layer="qpf">Precip.</button>
+              <button type="button" data-layer="satellite">Satellite</button>
+              <button type="button" data-layer="model">Model</button>
+              <button type="button" data-layer="reports">Storm Reports</button>
+            </div>
+            <select id="tiltSelect" class="tilt-select" aria-label="radar tilt"></select>
+            <select id="modelSelect" class="model-select"></select>
+            <select id="modelProductSelect" class="model-product-select" aria-label="model product"></select>
+            <div class="time-buttons">
+              <button id="stepBackBtn" type="button">-5</button>
+              <button id="playBtn" type="button">Play</button>
+              <button id="stepForwardBtn" type="button">+5</button>
+            </div>
+          </div>
+
+          <div class="map-shell">
+            <canvas id="weatherCanvas" aria-label="simulated severe weather map"></canvas>
+            <div class="map-readouts">
+              <div id="legend" class="legend"></div>
+              <div id="cursorReadout" class="cursor-readout">--</div>
+            </div>
+          </div>
+
+          <div class="timeline">
+            <input id="timeRange" type="range" min="0" max="72" value="0" />
+            <div class="timeline-status" id="timelineStatus">Current scan</div>
+            <div class="timeline-labels" id="timelineLabels"></div>
+          </div>
+        </section>
+
+        <aside class="panel right-panel">
+          <section class="control-section model-section">
+            <div class="section-heading">
+              <h2>CAM Guidance</h2>
+              <span id="modelMeta" class="status-chip">3 km</span>
+            </div>
+            <div id="modelSummary" class="model-summary"></div>
+            <div id="modelGrid" class="model-grid"></div>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading">
+              <h2>Active Products</h2>
+              <span id="activeCount" class="status-chip muted">0</span>
+            </div>
+            <div id="productList" class="product-list"></div>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading">
+              <h2>Reports</h2>
+              <span id="reportCount" class="status-chip muted">0</span>
+            </div>
+            <div id="reportList" class="report-list"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
