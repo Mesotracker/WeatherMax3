@@ -1,189 +1,152 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WeatherMax Warning Desk</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark">WX</div>
-          <div>
-            <h1>WeatherMax Warning Desk</h1>
-            <p id="caseSubtitle">Severe weather simulation</p>
-          </div>
-        </div>
-
-        <div class="top-metrics" aria-label="desk metrics">
-          <div class="metric">
-            <span>Valid</span>
-            <strong id="validTime">--</strong>
-          </div>
-          <div class="metric">
-            <span>Desk Score</span>
-            <strong id="deskScore">--</strong>
-          </div>
-          <div class="metric">
-            <span>Hits</span>
-            <strong id="hitCount">0</strong>
-          </div>
-          <div class="metric">
-            <span>False Alarms</span>
-            <strong id="falseAlarmCount">0</strong>
-          </div>
-          <div class="metric">
-            <span>Misses</span>
-            <strong id="missCount">0</strong>
-          </div>
-        </div>
-      </header>
-
-      <main class="desk-grid">
-        <aside class="panel left-panel">
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Case</h2>
-              <span class="status-chip">SIM</span>
-            </div>
-            <label class="field-label" for="caseSelect">Region</label>
-            <select id="caseSelect"></select>
-            <div class="sounding-inputs" aria-label="environmental sounding inputs">
-              <label>Temperature <input id="tempInput" type="number" min="-20" max="115" value="78" /> <span>°F</span></label>
-              <label>Dewpoint <input id="dewpointInput" type="number" min="-40" max="90" value="66" /> <span>°F</span></label>
-              <label>Bulk shear <input id="shearInput" type="number" min="0" max="120" value="45" /> <span>kt</span></label>
-              <label>CAPE <input id="capeInput" type="number" min="0" max="7000" step="100" value="2400" /> <span>J/kg</span></label>
-              <label>Helicity <input id="helicityInput" type="number" min="0" max="800" step="10" value="180" /> <span>m²/s²</span></label>
-            </div>
-            <button id="runBtn" class="desk-button" type="button">Run Simulation</button>
-            <div class="skewt-card">
-              <div class="mini-heading"><span>Input sounding</span><strong id="soundingMeta">Surface based</strong></div>
-              <canvas id="soundingCanvas" aria-label="Skew-T temperature and dewpoint profile"></canvas>
-            </div>
-            <div class="briefing" id="briefing"></div>
-          </section>
-
-          <section class="control-section palette-section">
-            <div class="section-heading">
-              <h2>Custom palette</h2>
-              <span id="palStatus" class="status-chip muted">Default</span>
-            </div>
-            <label class="field-label" for="palTarget">Apply uploaded .pal to</label>
-            <select id="palTarget">
-              <option value="radar">Reflectivity</option>
-              <option value="velocity">Velocity</option>
-            </select>
-            <label class="file-button" for="palFile">Choose .pal file</label>
-            <input id="palFile" type="file" accept=".pal,text/plain" hidden />
-            <button id="clearPalBtn" class="ghost-button compact-button" type="button">Restore selected default</button>
-            <p class="helper-copy">Only the selected reflectivity or velocity layer is overridden.</p>
-          </section>
-
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Product Desk</h2>
-              <span id="areaStatus" class="status-chip muted">No Area</span>
-            </div>
-            <label class="field-label" for="productSelect">Product</label>
-            <select id="productSelect"></select>
-            <div id="productOptions" class="product-options"></div>
-            <div class="button-row">
-              <button id="clearAreaBtn" class="ghost-button" type="button">Clear Area</button>
-              <button id="issueBtn" class="primary-button" type="button">Issue Product</button>
-            </div>
-          </section>
-
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Verification</h2>
-              <span id="accuracyBadge" class="status-chip">72%</span>
-            </div>
-            <div class="score-bars">
-              <div>
-                <span>Polygon Skill</span>
-                <meter id="polygonMeter" min="0" max="100" value="0"></meter>
-              </div>
-              <div>
-                <span>Lead Time</span>
-                <meter id="leadMeter" min="0" max="100" value="0"></meter>
-              </div>
-              <div>
-                <span>Hazard Match</span>
-                <meter id="hazardMeter" min="0" max="100" value="0"></meter>
-              </div>
-            </div>
-          </section>
-        </aside>
-
-        <section class="map-panel">
-          <div class="map-toolbar">
-            <div class="layer-tabs" id="layerTabs" aria-label="weather layers">
-              <button class="active" type="button" data-layer="radar">Reflectivity</button>
-              <button type="button" data-layer="velocity">Velocity</button>
-              <button type="button" data-layer="spectrum">SW</button>
-              <button type="button" data-layer="hail">Hail Size</button>
-              <button type="button" data-layer="rotation">Rotation</button>
-              <button type="button" data-layer="qpf">Precip.</button>
-              <button type="button" data-layer="satellite">Satellite</button>
-              <button type="button" data-layer="model">Model</button>
-              <button type="button" data-layer="reports">Storm Reports</button>
-            </div>
-            <select id="tiltSelect" class="tilt-select" aria-label="radar tilt"></select>
-            <select id="modelSelect" class="model-select"></select>
-            <select id="modelProductSelect" class="model-product-select" aria-label="model product"></select>
-            <div class="time-buttons">
-              <button id="stepBackBtn" type="button">-5</button>
-              <button id="playBtn" type="button">Play</button>
-              <button id="stepForwardBtn" type="button">+5</button>
-            </div>
-          </div>
-
-          <div class="map-shell">
-            <canvas id="weatherCanvas" aria-label="simulated severe weather map"></canvas>
-            <div class="map-readouts">
-              <div id="legend" class="legend"></div>
-              <div id="cursorReadout" class="cursor-readout">--</div>
-            </div>
-          </div>
-
-          <div class="timeline">
-            <input id="timeRange" type="range" min="0" max="72" value="0" />
-            <div class="timeline-status" id="timelineStatus">Current scan</div>
-            <div class="timeline-labels" id="timelineLabels"></div>
-          </div>
-        </section>
-
-        <aside class="panel right-panel">
-          <section class="control-section model-section">
-            <div class="section-heading">
-              <h2>CAM Guidance</h2>
-              <span id="modelMeta" class="status-chip">3 km</span>
-            </div>
-            <div id="modelSummary" class="model-summary"></div>
-            <div id="modelGrid" class="model-grid"></div>
-          </section>
-
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Active Products</h2>
-              <span id="activeCount" class="status-chip muted">0</span>
-            </div>
-            <div id="productList" class="product-list"></div>
-          </section>
-
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Reports</h2>
-              <span id="reportCount" class="status-chip muted">0</span>
-            </div>
-            <div id="reportList" class="report-list"></div>
-          </section>
-        </aside>
-      </main>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WeatherMax 3 — Warning Desk</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="desk">
+  <!-- ══════════════════════════ HEADER ══════════════════════════ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">WM</span>
+      <span class="brand-name">WeatherMax <b>3</b></span>
+      <span class="brand-sub">Convective Warning Desk</span>
     </div>
+    <div class="topbar-mid">
+      <span id="caseName" class="chip chip-case">—</span>
+      <span id="simState" class="chip chip-state">IDLE</span>
+      <span class="chip" id="frameChip">T+0:00</span>
+    </div>
+    <div class="topbar-right">
+      <span class="chip" id="siteChip">KTLX · Twin Lakes</span>
+      <span class="chip chip-dim" id="clockChip">--:--Z</span>
+    </div>
+  </header>
 
-    <script src="app.js"></script>
-  </body>
+  <!-- ══════════════════════════ BODY ═══════════════════════════ -->
+  <div class="body">
+    <!-- ─────────────────── LEFT: environment ─────────────────── -->
+    <aside class="panel panel-left">
+      <section class="card">
+        <h2 class="card-title">Case</h2>
+        <select id="caseSelect" class="select"></select>
+        <p class="hint" id="caseDesc">—</p>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Surface Environment</h2>
+        <div class="grid2">
+          <label>Temp <b>°F</b><input type="number" id="inTemp" value="88" step="1" /></label>
+          <label>Dewpt <b>°F</b><input type="number" id="inDewpoint" value="70" step="1" /></label>
+          <label>0–6 shear <b>kt</b><input type="number" id="inShear" value="55" step="1" /></label>
+          <label>MLCAPE <b>J/kg</b><input type="number" id="inCape" value="3500" step="100" /></label>
+          <label>0–3 SRH <b>m²/s²</b><input type="number" id="inHelicity" value="350" step="10" /></label>
+          <label>DCAPE <b>J/kg</b><input type="number" id="inDcape" value="1500" step="50" /></label>
+        </div>
+        <div class="row">
+          <button id="runBtn" class="btn btn-primary">Run Simulation</button>
+          <button id="seedBtn" class="btn">Reseed</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Derived Parameters</h2>
+        <table class="kv" id="paramTable"></table>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Sounding</h2>
+        <canvas id="soundingCanvas" width="264" height="230"></canvas>
+        <div class="legend-inline" id="hodographLegend">
+          <span class="sw" style="background:#5ad1ff"></span>hodograph
+          <span class="sw" style="background:#ffb454"></span>parcel
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Verification</h2>
+        <div class="meters" id="meters"></div>
+      </section>
+    </aside>
+
+    <!-- ─────────────────── CENTER: map ───────────────────────── -->
+    <main class="panel panel-map">
+      <div class="map-toolbar">
+        <div class="tabs" id="productTabs"></div>
+        <div class="toolbar-controls">
+          <label class="mini">Tilt
+            <select id="tiltSelect" class="select select-sm"></select>
+          </label>
+          <label class="mini">Model
+            <select id="modelSelect" class="select select-sm"></select>
+          </label>
+          <label class="mini">Field
+            <select id="modelProductSelect" class="select select-sm"></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="weatherCanvas"></canvas>
+        <div class="map-overlay tl" id="productLabel">Base Reflectivity</div>
+        <div class="map-overlay tr" id="legendBox"></div>
+        <div class="map-overlay bl" id="statusBox">Ready</div>
+        <div class="ctx-menu" id="ctxMenu" hidden></div>
+      </div>
+
+      <div class="map-foot">
+        <div class="transport">
+          <button class="btn btn-icon" id="btnStart" title="Jump to start">⏮</button>
+          <button class="btn btn-icon" id="btnBack" title="Back one frame">◀</button>
+          <button class="btn btn-primary btn-icon" id="btnPlay" title="Play / pause">▶</button>
+          <button class="btn btn-icon" id="btnFwd" title="Forward one frame">▶︎</button>
+          <button class="btn btn-icon" id="btnEnd" title="Jump to latest">⏭</button>
+        </div>
+        <input type="range" id="timeline" min="0" max="72" value="0" class="timeline" />
+        <div class="readout" id="cursorReadout">Move the cursor over the map · right-click for site &amp; coordinates</div>
+      </div>
+    </main>
+
+    <!-- ─────────────────── RIGHT: operations ─────────────────── -->
+    <aside class="panel panel-right">
+      <section class="card">
+        <h2 class="card-title">CAM Guidance</h2>
+        <table class="kv kv-tight" id="camTable"></table>
+      </section>
+
+      <section class="card grow">
+        <div class="card-head">
+          <h2 class="card-title">Active Products</h2>
+          <span class="pill" id="warnCount">0</span>
+        </div>
+        <div class="warn-list" id="warnList"><p class="empty">No active warnings.</p></div>
+      </section>
+
+      <section class="card grow">
+        <div class="card-head">
+          <h2 class="card-title">Storm Reports</h2>
+          <span class="pill" id="reportCount">0</span>
+        </div>
+        <div class="report-list" id="reportList"><p class="empty">No reports received.</p></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Storm Structure</h2>
+        <div class="storm-list" id="stormList"><p class="empty">No convection.</p></div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="wx/base.js"></script>
+<script src="wx/sounding.js"></script>
+<script src="wx/nwp.js"></script>
+<script src="wx/storms.js"></script>
+<script src="wx/radar.js"></script>
+<script src="wx/engine.js"></script>
+<script src="app.js"></script>
+</body>
 </html>
