@@ -58,7 +58,7 @@
       x: (nx * dxm) / 2,
       y: (ny * dxm) / 2,
     };
-    const radar = WX.createRadar({
+    const radarCfg = {
       grid,
       storms,
       sounding,
@@ -66,7 +66,8 @@
       maxRangeKm: cfg.maxRangeKm ?? 160,
       azimuths: cfg.azimuths ?? 240,
       tilts: cfg.tilts,
-    });
+    };
+    let radar = WX.createRadar(radarCfg);
 
     const domainKm = { w: (nx * dxm) / 1000, h: (ny * dxm) / 1000 };
     const frames = [];
@@ -484,6 +485,47 @@
     }
 
     /* --------------------------------------------------------------- misc */
+    /**
+     * Move the radar without touching the simulation. The storm field, the
+     * frame history, issued products and the score all survive; only the
+     * viewing geometry changes, exactly as switching sites in AWIPS does.
+     */
+    function setSite(newSite) {
+      const proj = WX.makeProjection(newSite.lat, newSite.lon);
+      const here = proj.toXY(site.lat, site.lon);
+      site.id = newSite.id;
+      site.name = newSite.name;
+      site.city = newSite.city;
+      site.state = newSite.state;
+      site.lat = newSite.lat;
+      site.lon = newSite.lon;
+      site.elev = newSite.elevM;
+      // keep the model domain fixed; only the antenna moves within it
+      site.x = clamp(site.x - here.x * 1000, 0, grid.nx * grid.dx);
+      site.y = clamp(site.y - here.y * 1000, 0, grid.ny * grid.dx);
+      radar = WX.createRadar({ ...radarCfg, site });
+      return radar;
+    }
+
+    /** Escalation: the environment gets more unstable and new cells initiate
+     *  as the shift goes on, so an unattended desk loses control. */
+    function escalate(minutes) {
+      const ramp = clamp(minutes / 240, 0, 1.6);
+      const n = Math.floor(ramp * 3);
+      for (let i = 0; i < n; i += 1) {
+        const hx = WX.hash(i * 31 + 7, Math.floor(minutes / 30), 3, 4242);
+        const hy = WX.hash(i * 17 + 3, Math.floor(minutes / 30), 5, 917);
+        grid.addBubble({
+          x: (0.12 + 0.76 * hx) * grid.nx * grid.dx,
+          y: (0.12 + 0.76 * hy) * grid.ny * grid.dx,
+          radius: 12000 + 6000 * ramp,
+          dTheta: 1.6 + 1.4 * ramp,
+          dQv: (1.0e-3 + 8e-4 * ramp),
+        });
+      }
+      return ramp;
+    }
+
     function sampleCursor(xKm, yKm) {
       const x = xKm * 1000;
       const y = yKm * 1000;
@@ -511,7 +553,9 @@
       sounding,
       grid,
       storms,
-      radar,
+      get radar() {
+        return radar;
+      },
       site,
       domainKm,
       frames,
@@ -520,6 +564,8 @@
       capture,
       modelField,
       sampleCursor,
+      setSite,
+      escalate,
       tornadoTracks,
       reports,
       activeWarnings,

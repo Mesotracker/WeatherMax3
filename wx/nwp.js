@@ -815,12 +815,14 @@
         W[(nz - 1) * n2d + idx] = 0;
         W[idx] = 0;
       }
-      // Surface drag plus sensible/latent flux. Heating is suppressed under
-      // rain and cloud, which is what lets an evaporatively driven cold pool
-      // survive instead of being erased by daytime insolation.
+      // Surface drag plus sensible/latent flux. The flux is distributed over
+      // the lowest ~1 km (a real mixed layer deepens) and sized from a
+      // physical 150 W/m2 budget; an earlier version dumped the whole flux
+      // into the 250 m bottom layer, which built a 6 K surface theta anomaly
+      // and drove a 45 m/s spurious wind field with no convection present.
       const Cd = cfg.Cd ?? 2.0e-3;
-      const heat = (cfg.heatFlux ?? 0.02) * dt * 0.02;
-      const moist = (cfg.moistFlux ?? 2.5e-5) * dt * 0.02;
+      const heat = (cfg.heatFlux ?? 3.5e-5) * dt;
+      const moist = (cfg.moistFlux ?? 1.2e-6) * dt;
       const dragK = clamp((Cd * dt) / dz[0], 0, 0.4);
       const u0 = U0[0];
       const v0 = V0[0];
@@ -829,9 +831,21 @@
         const drag = clamp(dragK * sp, 0, 0.4);
         U[idx] -= U[idx] * drag;
         V[idx] -= V[idx] * drag;
-        const wet = clamp((QR[idx] + QC[idx]) * 4000, 0, 1);
-        THP[idx] += heat * (1 - wet);
-        QV[idx] += moist * (1 - wet * 0.5);
+      }
+      for (let k = 0; k < 4 && k < nz; k += 1) {
+        const base = k * n2d;
+        const w = FLUX_W[k];
+        for (let idx = 0; idx < n2d; idx += 1) {
+          const o = base + idx;
+          const wet = clamp((QR[o] + QC[o]) * 4000, 0, 1);
+          THP[o] += heat * w * (1 - wet);
+          QV[o] += moist * w * (1 - wet * 0.5);
+        }
+      }
+      // a hard ceiling on the surface warmth anomaly: real boundary layers are
+      // capped by entrainment, not by unlimited insolation
+      for (let idx = 0; idx < n2d; idx += 1) {
+        if (THP[idx] > 3) THP[idx] = 3;
       }
 
       /* Boundary-layer momentum relaxation. Descending air conserves its
@@ -1122,6 +1136,8 @@
         a[b1 + p11] * W7
       );
     }
+
+    const FLUX_W = [0.4, 0.3, 0.2, 0.1];
 
     const _hydOut = { qc: 0, qr: 0, qs: 0, qh: 0, u: 0, v: 0, rho: 0, Tc: 0 };
     /** Only the condensate fields - used by the radar's beam-broadening pass. */

@@ -184,6 +184,8 @@
       const st = { qc: 0, qr: 0, qs: 0, qh: 0, u: 0, v: 0, rho: 0, Tc: 0 };
       const hyd = { qc: 0, qr: 0, qs: 0, qh: 0, rho: 0, Tc: 0 };
       const zTop = grid.zTop;
+      const motionU = sounding.metrics.motion.u;
+      const motionV = sounding.metrics.motion.v;
       const siteX = site.x;
       const siteY = site.y;
       const gdx = grid.dx;
@@ -273,7 +275,10 @@
           scan.CC[gi] = cc;
           scan.ZDR[gi] = zdrOf(qrG, qsG, qhG, qcG);
           scan.PTYPE[gi] = classifyPrecip(Z, cc, scan.ZDR[gi], tempC, qhG, qrG, qsG);
-          const vr = uTot * sinAz + vTot * cosAz;
+          // STORM-RELATIVE velocity: the environmental motion is removed, so a
+          // translating storm shows only its own circulation. Without this the
+          // whole domain is washed out by the mean flow.
+          const vr = (uTot - motionU) * sinAz + (vTot - motionV) * cosAz;
           scan.VR[gi] = vr;
           const folded = ((vr + NYQUIST) % (2 * NYQUIST) + 2 * NYQUIST) % (2 * NYQUIST) - NYQUIST;
           scan.V[gi] = folded;
@@ -452,7 +457,7 @@
       return entry;
     }
 
-    function raster(moment, tiltIndex, view, frame) {
+    function raster(moment, tiltIndex, view, frame, lutOverride) {
       markFrame(frame);
       const useTilts = Array.isArray(tiltIndex) ? tiltIndex : [tiltIndex];
       const src = useTilts.length > 1 ? composite(useTilts, frame) : scanAt(useTilts[0], frame);
@@ -473,7 +478,9 @@
           ? src.W
           : src.Z;
       const lut =
-        moment === 'ptype'
+        lutOverride && (moment === 'z' || moment === 'v')
+          ? lutOverride
+          : moment === 'ptype'
           ? { lut: WX.palettes.PTYPE_LUT, lo: 0, hi: 255, scale: 1 }
           : WX.palettes.LUTS[moment] || WX.palettes.LUTS.z;
       const idx = vi.idx;

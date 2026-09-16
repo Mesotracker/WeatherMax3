@@ -497,16 +497,18 @@
 
         /* --- hail: growth limited by the updraft suspension criterion - */
         const dMax = hailSizeFromUpdraft(el.w);
-        const growth = clamp((dMax - el.hailSize) / 900, -0.0004, 0.00006);
+        const growth = clamp((dMax - el.hailSize) / 600, -0.0004, 0.00008);
         el.hailSize = clamp(el.hailSize + growth * dt, 0, 0.22);
         const colHail = inDomain ? grid.colHail[col] : 0;
         el.hail = clamp(colHail * 3.2, 0, 1.4);
 
         /* --- precipitation and the downburst potential ---------------- */
         el.precip = inDomain ? clamp(grid.rainAccum[col] / 12, 0, 1.5) : 0;
+        // peak downdraft speed scales with sqrt(2*DCAPE); precipitation
+        // loading and the RFD phase modulate how much reaches the ground
         const dcapeGust = 0.75 * Math.sqrt(2 * Math.max(0, metrics.dcape));
-        const loading = 6 * clamp(el.precip, 0, 1);
-        el.gust = clamp((dcapeGust * 0.55 + loading) * clamp((el.rfd * 0.5 + 0.5), 0, 1), 0, 75);
+        const loading = 7 * clamp(el.precip, 0, 1);
+        el.gust = clamp((dcapeGust * 0.8 + loading) * clamp(el.rfd * 0.45 + 0.55, 0, 1), 0, 75);
 
         /* --- tornadogenesis ------------------------------------------- */
         const stp = metrics.stp;
@@ -514,9 +516,9 @@
         // only a minority of supercells tornadify: require strong low-level
         // vorticity AND low LCL AND a supportive STP
         const torThreshold = 0.0095 + 0.0045 * (1 - lclPenalty);
-        if (!el.tornado && el.zetaLow > torThreshold && el.age > 1800 && stp > 1.2 && el.w > 12) {
+        if (!el.tornado && el.zetaLow > torThreshold && el.age > 1200 && stp > 1.2 && el.w > 12) {
           const chance = clamp((el.zetaLow - torThreshold) * 70 * (0.25 + stp * 0.14), 0, 1);
-          if (hash(el.id, Math.floor(time / 300), 11, cfg.seed || 1) < chance * 0.12) {
+          if (hash(el.id, Math.floor(time / 300), 11, cfg.seed || 1) < chance * 0.3) {
             el.tornado = { ef: 0, intensity: 0, x: el.x, y: el.y, age: 0, path: [] };
           }
         }
@@ -524,7 +526,7 @@
           const tor = el.tornado;
           tor.age += dt;
           // intensity follows the low-level vorticity, ramping up then down
-          const target = clamp((el.zetaLow - torThreshold) * 82, 0, 1.2);
+          const target = clamp((el.zetaLow - torThreshold) * 110, 0, 1.2);
           tor.intensity = lerp(tor.intensity, target, 0.12);
           tor.ef = efFromIntensity(tor.intensity);
           // the tornado sits at the updraft centre, slightly cyclonic-side
@@ -545,7 +547,7 @@
         const margin = dx * 2;
         if (!inDomain || el.x < -margin || el.y < -margin || el.x > grid.nx * dx + margin || el.y > grid.ny * dx + margin) {
           el.dead = true;
-        } else if (el.life > 2400) {
+        } else if (el.life > 5400) {
           el.dead = true;
         }
       }
@@ -607,7 +609,9 @@
             y: el.y,
             radius: 6000,
             mph: Math.round(gustMph),
-            severity: clamp((gustMph - 55) / 45, 0, 1),
+            // 58 mph severe -> 0.30, 74 mph significant -> 0.68,
+            // 80 mph destructive -> 0.82, 100 mph -> 1.0
+            severity: clamp(0.3 + (gustMph - 58) / 42, 0, 1),
             tag: windTag(gustMph),
             source: 'storm',
             id: `w${el.id}`,
@@ -621,7 +625,9 @@
             y: el.y,
             radius: 5200,
             inches: Math.round(inches * 100) / 100,
-            severity: clamp((inches - 0.7) / 3.3, 0, 1),
+            // 0.75 in -> 0.30, 1.5 in -> 0.53, 2.0 in -> 0.68,
+            // 2.75 in destructive -> 0.92, 4.0 in -> 1.0
+            severity: clamp(0.3 + (inches - 0.75) / 3.25, 0, 1),
             tag: hailTag(inches),
             source: 'storm',
             id: `h${el.id}`,
@@ -636,7 +642,9 @@
             radius: 1200,
             ef,
             mph: efWind(ef),
-            severity: clamp(0.45 + el.tornado.intensity * 0.45, 0, 1),
+            // EF0 -> 0.50, EF1 -> 0.63, EF2 significant -> 0.76,
+            // EF3 -> 0.89, EF4 violent -> 1.0
+            severity: clamp(0.5 + ef * 0.13, 0, 1),
             tag: ef >= 4 ? 'catastrophic' : ef >= 2 ? 'considerable' : 'base',
             path: el.tornado.path,
             source: 'storm',

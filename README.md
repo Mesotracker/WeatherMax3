@@ -1,16 +1,15 @@
-# WeatherMax 3 — Convective Warning Desk
+# WeatherMax 3 — Warning Desk
 
-A browser-based warning-desk simulator built on an actual atmospheric model rather
-than scripted animations. Open `index.html` (no build step, no dependencies) and
-the desk integrates a 3-D non-hydrostatic model, diagnoses convective elements
-from it, runs a WSR-88D forward operator over the result, and issues warnings and
-storm reports from what the physics produced.
+A severe-weather **warning game**. You are the forecaster on duty: the atmosphere
+runs on a real numerical model, storms develop on their own schedule, and you draw
+warning polygons, pick AWIPS products and impact tags, and get scored on how well
+you called it. Miss a significant event and it costs you.
 
 ```
 python3 -m http.server 8080      # then open http://localhost:8080
 ```
 
-A headless test suite that exercises the same render pipeline in Node:
+Headless test suite (drives the real game logic through a DOM stub):
 
 ```
 node test/run.js
@@ -18,147 +17,131 @@ node test/run.js
 
 ---
 
+## How to play
+
+1. **Start Shift** picks a scenario and starts the clock. Tempo accelerates across
+   the shift — you get less time to think as it goes on.
+2. **Watch the radar.** Ten layers, four real elevation angles, ten CAM guidance
+   runs. Right-click for coordinates and to move the radar.
+3. **Draw a warning area** by dragging on the map. Four shapes: county-style,
+   storm cone, free polygon, box. Wheel zooms.
+4. **Pick a product** in the Product Desk — outlook, mesoscale discussion, watch,
+   PDS watch, warning, PDS/destructive warning, flash flood, SPS — and set its
+   impact tag, max wind, max hail, duration and basis.
+5. **Issue it.** You are scored immediately, and again as the valid period plays out.
+6. **Time controls**: `−5` / `+5` step one 5-minute frame, `Play` runs the clock,
+   and the slider **only scrubs frames that have already happened** — you can
+   review the past but never look ahead. `Space` plays, `←/→` step, `Enter` issues,
+   `Esc` clears the polygon, `1`–`9` switch layers.
+
+### Scoring
+
+Each issued product is verified against the model's own truth hazards over its
+valid period:
+
+```
+score = spatial·0.46 + lead·0.24 + severity·0.18 + hazardFit·0.12
+hit   = score ≥ 44          skill points = max(8, score − 45)
+```
+
+- **Spatial** — containment of the hazard ellipse, penalised for polygons much
+  larger than the hazard. A county-sized box around a single core scores badly.
+- **Lead** — for warnings, best around 10 minutes; too early or too late both cost.
+- **Severity** — how well your impact tag and wind/hail maxima match what happened.
+  Tagging `destructive` on a 65 mph gust is penalised.
+- **Hazard fit** — did you warn the right hazard at the right magnitude?
+
+A false alarm costs 18–38 points depending on the product. **Missing** a hazard
+with severity ≥ 0.66 that had no active warning over it costs **32 points**.
+Desk score = `72 + skillPoints / (issued + misses)`, clamped to 0–100.
+
+---
+
 ## What is actually simulated
 
 ### `wx/sounding.js` — environment
-81 levels from 200 m to 16 km. Pressure from hypsometric integration of virtual
-temperature; a height-dependent lapse rate `Γ(z) = 8.6·e^(−z/1400) + Γ_m·(1−e^(−z/1400))`
-blending to 3.2 K/km by 12 km; moisture held constant through the mixed layer then
-decaying exponentially with a Gaussian dry slot aloft. The user's surface
-temperature/dewpoint/shear/CAPE/SRH/DCAPE targets are met by bisecting the mixed-layer
-lapse rate (CAPE), the dry-slot depth (DCAPE) and fitting a hodograph to the shear
-and helicity targets.
-
-Published indices are computed, not approximated:
-
-- **MLCAPE / CIN** — mean parcel over the lowest 100 hPa, dry adiabat to the Bolton
-  LCL, then a pseudoadiabatic ascent integrated to the equilibrium level.
-- **DCAPE** — descent of a *wet-bulb* parcel from the minimum-θe level.
-- **0–1 / 0–3 SRH** — discrete integration of `−v·∂u/∂z + u·∂v/∂z` relative to the
-  Bunkers right-mover.
-- **STP / SCP** — the SPC fixed-layer formulas with their published clipping
-  (which is why a high-LCL case scores STP ≈ 0 and never tornadifies).
-- **WBZ** — upward along a saturated moist adiabat from the LCL until T < 0 °C.
+81 levels to 16 km. Your surface temp/dewpoint/shear/CAPE/SRH/DCAPE targets are
+met by bisecting the mixed-layer lapse rate (CAPE), the dry-slot depth (DCAPE) and
+fitting a hodograph to the shear and helicity. Published STP and SCP with their
+real clipping — which is why the high-LCL Colorado case scores STP ≈ 0 and never
+tornadifies no matter how tall the echo gets.
 
 ### `wx/nwp.js` — the model core
-65 × 49 columns at 5 km (325 × 245 km), 14 levels from 250 m to ~14 km, 60 s
-substeps. The domain **translates with the Bunkers right-mover**, so storms stay
-quasi-stationary for a full shift.
+57 × 43 columns at 5 km (285 × 215 km), 14 levels from 250 m to 14.2 km, five 60 s
+substeps, translating with the Bunkers right-mover so storms hold position.
 
-- **Advection** — semi-Lagrangian, one shared departure trajectory per cell reused
-  by all nine tracers. Momentum is advected as the *total* wind and re-based onto
-  the arrival level, so a parcel carries the environmental shear of its origin.
-- **Microphysics** — five classes (vapour, cloud, rain, snow, hail). Saturation
-  adjustment with latent-heat feedback and ice/water partition by temperature,
-  Kessler autoconversion and accretion, Kessler-form rain evaporation
-  `E = K(1−RH)(ρq_r)^0.5` (this is what builds the cold pool), ice deposition,
-  riming, hail accretion, melting, and top-down incremental sedimentation with
-  mass-weighted fall speeds.
-- **Dynamics** — buoyancy `g·θ_v′/θ̄₀ − g·Σq` plus Coriolis and a quadratic
-  updraft drag, then an **anelastic pressure projection**: a 3-D Poisson solve for
-  the non-hydrostatic pressure perturbation by Jacobi iteration, whose gradient is
-  removed from the wind. This is what converts a buoyant column into a real
-  convective circulation with low-level inflow and upper-level outflow.
-- **Closure** — Rayleigh relaxation of the momentum perturbation (short near the
-  surface, long aloft), horizontal/vertical turbulent diffusion, a 7-cell lateral
-  sponge, a Rayleigh top, a rigid lid, and surface drag with insolation suppressed
-  under rain and cloud so cold pools survive.
+- Semi-Lagrangian advection carrying the **total** momentum so a parcel keeps the
+  environmental shear of its origin level.
+- Five-class bulk microphysics with Kessler-form evaporation `E = K(1−RH)(ρq_r)^0.5`
+  — this is what builds the cold pool.
+- **Anelastic pressure projection**: a 3-D Poisson solve for the non-hydrostatic
+  pressure perturbation whose gradient is removed from the wind. This is what turns
+  a buoyant column into a circulation with low-level inflow.
+- Surface flux distributed over the lowest kilometre and sized from a 150 W/m²
+  budget; a Rayleigh momentum relaxation; lateral sponge; rigid lid.
+- **MESH** from the Witt (1998) severe-hail index, not from a mixing ratio.
 
-`updateDerived` also computes **MESH** (Witt et al. 1998) from the height-weighted
-severe-hail index rather than from a mixing ratio.
-
-Typical output for the Oklahoma outbreak case: 30–38 m/s updrafts, 60–65 dBZ cores,
-a −2 K cold pool, 60–120 mm core accumulations, updraft helicity 150–450 m²/s².
+The model top matters: at 11.4 km the updraft hit the lid and died (w = 1.7 m/s).
+At 14.2 km the same case produces 32–45 m/s updrafts, 62–67 dBZ cores, a −1.3 K
+cold pool and 20–30 mm core accumulations.
 
 ### `wx/storms.js` — convective elements
-A 5 km grid cannot resolve a 6 km updraft, so each element is carried explicitly
-and obeys real relationships:
+A 5 km grid cannot resolve a 6 km updraft, so each element is carried explicitly:
 
-- **Mesocyclone** — `dζ/dt = tilting + stretching − friction`, where tilting is the
-  streamwise horizontal vorticity `(∂w/∂z)·|∂V/∂z|` scaled by the streamwise
-  fraction of the shear. Produces 7–20 ×10⁻³ s⁻¹ for strong-shear cases and 2–5 for
-  weak-shear ones.
-- **Hail** — `D_max` from the suspension criterion `w_up = V_t(D)` with the observed
-  dry-hail fall speed `V_t = 126·D^0.567`. A 30 m/s updraft supports ~3 in, a 15 m/s
-  updraft ~0.9 in.
-- **Downburst** — `gust = 0.75·√(2·DCAPE)` plus precipitation loading.
-- **Tornado** — requires low-level vorticity above a threshold that rises with LCL
-  height, an STP above 1.2, and a mature mesocyclone; then a probabilistic onset.
-  EF scale from the low-level vorticity excess.
-- **Systems** — single-linkage clustering into isolated / pulse / multicell /
-  cluster / line / bow, with the bow amount measured from the along-motion
-  projection, plus bookend vortices and an RFD/occlusion cycle.
+- **Mesocyclone** — `dζ/dt = tilting + stretching − friction`, tilting being the
+  streamwise horizontal vorticity scaled by the streamwise fraction of the shear.
+- **Hail** — from the suspension criterion `w_up = V_t(D)` with `V_t = 126·D^0.567`.
+- **Downburst** — `0.75·√(2·DCAPE)` plus precipitation loading, modulated by the RFD.
+- **Tornado** — requires low-level vorticity above an LCL-dependent threshold,
+  STP > 1.2 and a mature mesocyclone; EF scale follows the vorticity excess.
+- **Systems** — clustering into isolated / pulse / multicell / cluster / line / bow
+  with bookend vortices and an RFD/occlusion cycle.
 
-Element structure (hook echo, forward-flank precipitation, hail core aloft, BWER,
-RFD arc, Rankine mesocyclone and TVS winds) is splatted onto a coarse overlay grid
-each step so the radar operator can sample it at hundreds of thousands of gates
-without re-running the element loop.
+Hazard severities are anchored on the real NWS thresholds, so the game's 0.66 miss
+line means *significant*: 74 mph, 2.00 in, EF2.
 
 ### `wx/radar.js` — the forward operator
-Polar sampling at 240 azimuths, 250 m gates to 46 km then 1 km gates to 160 km,
-11 elevation angles.
+240 azimuths, 250 m gates to 46 km then 1 km gates to 170 km, 11 elevation angles.
 
-- **Beam height** — `h = √(r² + (k_e R_e)² + 2·r·k_e R_e·sin θ) − k_e R_e + h_ant`
-  with `k_e = 4/3`. At 0.5°: 0.59 km at 50 km, 1.47 km at 100 km, 2.64 km at 150 km.
-- **Beam broadening** — `σ_beam = 0.42·r·θ_b`. Every gate with condensate is
-  averaged across the beam at ±σ, which is the beam-volume convolution that
-  genuinely inflates distant mesocyclones, weakens peak velocities and smears
-  reflectivity — 0.37 km at 50 km growing to 1.10 km at 150 km.
-- **Moments** — reflectivity from calibrated Marshall-Palmer relations per
-  hydrometeor class, correlation coefficient and ZDR from the hydrometeor mixture,
-  precipitation type from ρhv/ZDR/temperature, radial velocity folded to ±26 m/s
-  Nyquist, two-way attenuation, a bright band at the melting level, ground clutter
-  on the lowest tilts inside 26 km, and a cone of silence above the model top.
-- **MRMS** — a coarse 2–3 km Cartesian composite built from the nearest site, with
-  azimuthal shear `(V_max − V_min)/(2Δr)` and rotational velocity derived from
-  **that coarse grid**, so a distant mesocyclone reads broader and weaker exactly
-  as it does in the real product.
+- **Beam height** on the 4/3-earth cone: 0.59 km at 50 km, 1.47 km at 100 km,
+  2.64 km at 150 km on the 0.5° tilt.
+- **Beam broadening** `σ = 0.42·r·θ_b` applied as a real cross-beam average, so
+  distant mesocyclones genuinely inflate and smear.
+- **Velocity is storm-relative** — the environmental motion is removed, so a
+  translating storm shows only its own circulation (mean |SRV| ≈ 12 m/s, folded
+  at ±26 m/s Nyquist).
+- ρhv and ZDR from the hydrometeor mixture, hydrometeor classification, two-way
+  attenuation, bright band, ground clutter, cone of silence.
+- **MRMS** rotation derived from the coarse composite, so it reads broader and
+  weaker with range exactly like the real product.
 
-### `wx/engine.js` — operations
-Frames are captured every 5 model minutes. Warnings are storm-based polygons
-aligned with the storm motion, clustered within 55 km, and tagged:
-
-| hazard | base | considerable | destructive / catastrophic |
-| --- | --- | --- | --- |
-| wind | 60–69 mph | 70–79 mph | ≥ 80 mph |
-| hail | 0.75 / 1.00 in | 1.50 / 2.00 in | ≥ 2.75 in |
-| tornado | EF0–EF1 | EF2–EF3 (PDS) | EF4–EF5 (Tornado Emergency) |
-
-Storm reports are drawn with the observed relative frequencies — wind damage and
-50+ mph gusts most common, hail common, tornadoes medium, significant wind (74+ mph)
-and significant hail (≥ 2 in) rare, significant tornadoes rarest — and spawned from
-actual velocity, precipitation-type and rotation values at jittered positions.
-
-Each tornado keeps **one contiguous path**; tracks are never duplicated.
-
-CAM guidance is a biased transform of the model truth: each scheme gets its own
-displacement, timing offset, Z–R offset and updraft/wind/hail/QPF scaling.
+### Operations
+Storm-based polygons, spotter reports at observed relative frequencies, one
+contiguous path per tornado, per-scheme CAM biases.
 
 ---
 
 ## Desk controls
 
-- **Tabs 1–9** switch products; **Space** plays, **←/→** step frames.
-- **Right-click** the map for the lat/lon and range/bearing at the cursor (click to
-  copy) and to **switch radar site** — the six nearest of 109 real WSR-88D sites, or
-  the full list grouped by state.
-- The left panel drives the environment; **Run Simulation** re-integrates with a new
-  seed. The right panel lists CAM guidance, active warnings, incoming reports and
-  per-cell structure.
+- **Right-click**: cursor lat/lon and range/bearing (click to copy), draw an area
+  centred on the cursor, and **switch radar site** — the six nearest of 109 real
+  WSR-88D sites or the full list. Switching sites moves the antenna, **not** the
+  simulation: your score, issued products, reports and the clock all survive.
+- **`.pal` upload**: load an AWIPS/N0R-format colormap (`value red green blue` per
+  line) onto the reflectivity or velocity layer.
 
 ## Performance
 
-Node v22, 65 × 49 × 14 grid, 5 substeps per 5-minute frame: ~300 ms of model time
-per frame, integrated progressively in the background so the desk stays responsive,
-plus ~90–120 ms for a radar scan when the frame or tilt changes (the next frame's
-scan is pre-warmed during idle time). Playback from the frame cache is immediate.
+Node v22: ~380–490 ms of wall clock per 5-minute frame (model step, element update,
+hazard diagnosis, frame capture and one radar scan). The model integrates in a
+`setTimeout` chain so it never blocks the pointer, raster output is cached per
+frame/layer/tilt/zoom, and the tempo starts at 20 s per frame and tightens to 5.5 s.
 
 ## Known limits
 
-- The approximate pressure projection enforces continuity but not the full momentum
-  balance, so perturbation winds aloft run somewhat stronger than observed (35–50
-  m/s storm-relative instead of 20–30). A multigrid solve would fix this.
-- Rotation is carried by the element layer because a 5 km grid cannot tilt shear
-  explicitly; the model's own vorticity field is convergence-driven.
-- Total core accumulations run on the high side for long-lived cases (100+ mm over
-  five hours).
+- The Jacobi projection enforces continuity but not the full momentum balance, so
+  perturbation winds aloft still run stronger than observed.
+- Tornadoes are predominantly EF0–EF1; the EF scale follows low-level vorticity
+  honestly, and this run's mesocyclones peaked near 20 ×10⁻³ s⁻¹.
+- Rotation lives in the element layer because a 5 km grid cannot tilt shear
+  explicitly.

@@ -26,6 +26,8 @@ function makeCtx() {
     restore: noop,
     clearRect: noop,
     fillRect: noop,
+    rect: noop,
+    createLinearGradient: () => ({ addColorStop: noop }),
     arc: () => { calls.arc += 1; },
     ellipse: () => { calls.ellipse += 1; },
     stroke: () => { calls.stroke += 1; },
@@ -43,6 +45,15 @@ function makeCtx() {
 function makeEl(id) {
   const ctx = makeCtx();
   const el = {
+    classList: {
+      _s: new Set(),
+      add(c) { this._s.add(c); },
+      remove(c) { this._s.delete(c); },
+      toggle(c, on) { if (on === undefined) { this._s.has(c) ? this._s.delete(c) : this._s.add(c); } else if (on) this._s.add(c); else this._s.delete(c); },
+      contains(c) { return this._s.has(c); },
+    },
+    files: [],
+    disabled: false,
     id,
     value: '',
     textContent: '',
@@ -58,6 +69,10 @@ function makeEl(id) {
     max: '72',
     _listeners: {},
     addEventListener(t, f) { (this._listeners[t] = this._listeners[t] || []).push(f); },
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    appendChild(child) { (this.children = this.children || []).push(child); return child; },
+    dispatch(type, ev) { (this._listeners[type] || []).forEach((f) => f(ev || { target: this, preventDefault() {} })); },
     querySelectorAll() { return []; },
     querySelector() { return null; },
     contains() { return false; },
@@ -76,6 +91,7 @@ const document = {
     if (!els.has(id)) els.set(id, makeEl(id));
     return els.get(id);
   },
+  createElement(tag) { return makeEl('<' + tag + '>'); },
   addEventListener() {},
   querySelectorAll() { return []; },
 };
@@ -103,8 +119,10 @@ const sandbox = {
   Array,
   Object,
   String,
-  setTimeout,
-  clearTimeout,
+  // fake timers: the app's self-driving loops would otherwise keep the Node
+  // event loop alive forever. Tests drive time explicitly.
+  setTimeout: () => 0,
+  clearTimeout: () => {},
   requestAnimationFrame: () => 0,
   performance: { now: () => Number(process.hrtime.bigint()) / 1e6 },
   navigator: { clipboard: { writeText: async () => {} } },
@@ -112,6 +130,8 @@ const sandbox = {
   document,
   addEventListener() {},
   devicePixelRatio: 1,
+  setInterval: () => 0,
+  clearInterval: () => {},
 };
 sandbox.window = sandbox;
 sandbox.self = sandbox;
